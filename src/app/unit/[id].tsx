@@ -1,23 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Sticker from '../../components/Sticker';
 import { type DocType, type LockerDocument, type Unit } from '../../lib/db';
 import {
   deleteDocument,
-  uriForDocument,
   getUnit,
   importPdf,
   listDocuments,
+  uriForDocument,
 } from '../../lib/documents';
+import { openPdf } from '../../lib/openFile';
+import { colors, fonts, stickerColor, tiltFor } from '../../theme';
 
-const TYPES: { key: DocType; label: string }[] = [
-  { key: 'outline', label: 'Outline' },
-  { key: 'textbook', label: 'Textbook' },
-  { key: 'notes', label: 'Notes' },
-  { key: 'other', label: 'Other' },
+const TYPES: { key: DocType; label: string; emoji: string; color: string }[] = [
+  { key: 'outline', label: 'Outline', emoji: '📋', color: colors.sky },
+  { key: 'textbook', label: 'Textbook', emoji: '📚', color: colors.sun },
+  { key: 'notes', label: 'Notes', emoji: '📝', color: colors.mint },
+  { key: 'other', label: 'Other', emoji: '📎', color: colors.bubblegum },
 ];
+
+function typeInfo(type: DocType) {
+  return TYPES.find((t) => t.key === type) ?? TYPES[3];
+}
 
 export default function UnitShelf() {
   const insets = useSafeAreaInsets();
@@ -47,15 +53,7 @@ export default function UnitShelf() {
 
   const handleOpen = async (doc: LockerDocument) => {
     try {
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert('Cannot open', 'No app available to open PDFs on this device.');
-        return;
-      }
-      await Sharing.shareAsync(uriForDocument(doc), {
-        mimeType: 'application/pdf',
-        UTI: 'com.adobe.pdf',
-        dialogTitle: doc.title,
-      });
+      await openPdf(uriForDocument(doc));
     } catch (e) {
       Alert.alert('Could not open file', String(e));
     }
@@ -75,82 +73,129 @@ export default function UnitShelf() {
     ]);
   };
 
-  return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + 8 }]}>
-      <Stack.Screen options={{ title: unit ? unit.code : 'Unit' }} />
-      <Text style={styles.unitName}>{unit?.name ?? ''}</Text>
+  const header = (
+    <View>
+      {unit && (
+        <Sticker color={stickerColor(unit.id)} faceStyle={styles.bannerFace} style={styles.banner}>
+          <Text style={styles.bannerCode}>{unit.code}</Text>
+          <Text style={styles.bannerName}>{unit.name}</Text>
+        </Sticker>
+      )}
 
-      <Text style={styles.label}>Next import is a:</Text>
+      <Text style={styles.label}>What are you adding?</Text>
       <View style={styles.chips}>
         {TYPES.map((t) => (
           <Pressable
             key={t.key}
             onPress={() => setType(t.key)}
-            style={[styles.chip, type === t.key && styles.chipActive]}
+            style={[styles.chip, type === t.key && { backgroundColor: t.color }]}
           >
             <Text style={[styles.chipText, type === t.key && styles.chipTextActive]}>
-              {t.label}
+              {t.emoji} {t.label}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      <Pressable style={styles.importButton} onPress={handleImport}>
-        <Text style={styles.importText}>+ Add PDF</Text>
-      </Pressable>
+      <Sticker color={colors.tomato} onPress={handleImport} style={styles.addWrap} faceStyle={styles.addFace}>
+        <Text style={styles.addText}>Add PDF</Text>
+      </Sticker>
 
+      <Text style={styles.shelfTitle}>On this shelf</Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <Stack.Screen options={{ title: unit ? unit.code : 'Unit' }} />
       <FlatList
         data={docs}
         keyExtractor={(d) => String(d.id)}
-        ListEmptyComponent={<Text style={styles.empty}>No documents on this shelf yet.</Text>}
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.docCard}
-            onPress={() => handleOpen(item)}
-            onLongPress={() => confirmDelete(item)}
-          >
-            <Text style={styles.docType}>{item.type.toUpperCase()}</Text>
-            <Text style={styles.docTitle}>{item.title}</Text>
-          </Pressable>
-        )}
+        ListHeaderComponent={header}
+        contentContainerStyle={{ padding: 18, paddingBottom: insets.bottom + 28 }}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            This shelf is empty. Pick a type above and add your first PDF.
+          </Text>
+        }
+        ListFooterComponent={
+          docs.length > 0 ? (
+            <Text style={styles.hint}>Tap to open. Long-press to delete.</Text>
+          ) : null
+        }
+        renderItem={({ item, index }) => {
+          const info = typeInfo(item.type);
+          return (
+            <Sticker
+              color={info.color}
+              tilt={tiltFor(index)}
+              style={styles.docWrap}
+              faceStyle={styles.docFace}
+              onPress={() => handleOpen(item)}
+              onLongPress={() => confirmDelete(item)}
+            >
+              <Text style={styles.docType}>
+                {info.emoji} {info.label}
+              </Text>
+              <Text style={styles.docTitle}>{item.title}</Text>
+            </Sticker>
+          );
+        }}
       />
-      <Text style={styles.hint}>Tap to open. Long-press to delete.</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#F8FAFC' },
-  unitName: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
-  label: { fontSize: 13, color: '#64748B', marginBottom: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: colors.backdrop },
+  banner: { marginBottom: 6 },
+  bannerFace: { padding: 18 },
+  bannerCode: { fontFamily: fonts.bold, fontSize: 32, color: colors.ink },
+  bannerName: { fontFamily: fonts.medium, fontSize: 19, color: colors.ink },
+  label: {
+    fontFamily: fonts.semi,
+    fontSize: 17,
+    color: colors.ink,
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
+    borderWidth: 2.5,
+    borderColor: colors.ink,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
-  chipActive: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
-  chipText: { color: '#334155' },
-  chipTextActive: { color: '#FFFFFF', fontWeight: '600' },
-  importButton: {
-    backgroundColor: '#4F46E5',
-    borderRadius: 8,
+  chipText: { fontFamily: fonts.medium, fontSize: 15, color: colors.ink },
+  chipTextActive: { fontFamily: fonts.bold },
+  addWrap: { marginTop: 20 },
+  addFace: { paddingVertical: 14, alignItems: 'center' },
+  addText: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink },
+  shelfTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 26,
+    color: colors.ink,
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  docWrap: { marginBottom: 12 },
+  docFace: { paddingVertical: 12, paddingHorizontal: 16 },
+  docType: { fontFamily: fonts.semi, fontSize: 14, color: colors.ink },
+  docTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink, marginTop: 2 },
+  empty: {
+    textAlign: 'center',
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    color: colors.muted,
+    marginTop: 8,
+  },
+  hint: {
+    textAlign: 'center',
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.muted,
     paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 16,
   },
-  importText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
-  docCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 10,
-  },
-  docType: { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  docTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', marginTop: 2 },
-  empty: { textAlign: 'center', color: '#64748B', marginTop: 24 },
-  hint: { textAlign: 'center', color: '#94A3B8', fontSize: 12, paddingVertical: 8 },
 });
