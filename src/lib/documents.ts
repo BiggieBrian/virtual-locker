@@ -108,3 +108,22 @@ export async function searchDocuments(query: string): Promise<DocumentHit[]> {
     like
   );
 }
+
+export async function renameDocument(id: number, title: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE documents SET title = ? WHERE id = ?', title, id);
+}
+
+export async function moveDocument(
+  id: number,
+  unitId: number,
+  type: DocType
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE documents SET unit_id = ?, type = ? WHERE id = ?',
+    unitId,
+    type,
+    id
+  );
+}
