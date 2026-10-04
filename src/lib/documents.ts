@@ -84,3 +84,27 @@ export async function deleteUnitAndFiles(unitId: number): Promise<void> {
   await deleteUnit(unitId);
   await Promise.all(docs.map((d) => removeStoredFile(d.file_path)));
 }
+
+export interface DocumentHit extends LockerDocument {
+  unit_code: string;
+  unit_name: string;
+}
+
+// Finds documents by file name, or by their unit's code or name.
+export async function searchDocuments(query: string): Promise<DocumentHit[]> {
+  const q = query.trim();
+  if (q === '') return [];
+  const db = await getDb();
+  const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return db.getAllAsync<DocumentHit>(
+    `SELECT d.*, u.code AS unit_code, u.name AS unit_name
+     FROM documents d JOIN units u ON u.id = d.unit_id
+     WHERE d.title LIKE ? ESCAPE '\\'
+        OR u.code LIKE ? ESCAPE '\\'
+        OR u.name LIKE ? ESCAPE '\\'
+     ORDER BY d.added_at DESC`,
+    like,
+    like,
+    like
+  );
+}

@@ -15,7 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sticker from '../components/Sticker';
 import TodayStrip from '../components/TodayStrip';
 import { type IdCard, type Unit, addUnit, listUnits } from '../lib/db';
-import { deleteUnitAndFiles } from '../lib/documents';
+import {
+  type DocumentHit,
+  deleteUnitAndFiles,
+  searchDocuments,
+  uriForDocument,
+} from '../lib/documents';
 import {
   addIdCard,
   deleteIdCard,
@@ -34,6 +39,17 @@ export default function LockerHome() {
   const [viewing, setViewing] = useState<IdCard | null>(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<DocumentHit[]>([]);
+  const searching = query.trim() !== '';
+
+  useEffect(() => {
+    if (query.trim() === '') {
+      setHits([]);
+      return;
+    }
+    searchDocuments(query).then(setHits).catch(console.error);
+  }, [query]);
 
   const hasId = idCards.some((c) => c.label === 'School ID');
   const hasTimetable = idCards.some((c) => c.label === 'Timetable');
@@ -113,10 +129,53 @@ export default function LockerHome() {
     ]);
   };
 
+  const openHit = async (doc: DocumentHit) => {
+    try {
+      await openPdf(uriForDocument(doc));
+    } catch (e) {
+      Alert.alert('Could not open file', String(e));
+    }
+  };
+
   const header = (
     <View>
       <Text style={styles.title}>My Locker</Text>
 
+      <TextInput
+        style={styles.search}
+        placeholder="Search your files"
+        placeholderTextColor={colors.muted}
+        value={query}
+        onChangeText={setQuery}
+        autoCorrect={false}
+      />
+
+      {searching && (
+        <View>
+          {hits.length === 0 ? (
+            <Text style={styles.empty}>
+              Nothing found. Try part of a file name or a unit code.
+            </Text>
+          ) : (
+            hits.map((h, i) => (
+              <Sticker
+                key={h.id}
+                color={stickerColor(h.unit_id)}
+                tilt={tiltFor(i)}
+                style={styles.unit}
+                faceStyle={styles.hitFace}
+                onPress={() => openHit(h)}
+              >
+                <Text style={styles.hitUnit}>{h.unit_code}</Text>
+                <Text style={styles.hitTitle}>{h.title}</Text>
+              </Sticker>
+            ))
+          )}
+        </View>
+      )}
+
+      {!searching && (
+        <>
       <View style={styles.idRow}>
         {idCards.map((card) => (
           <Sticker
@@ -165,6 +224,8 @@ export default function LockerHome() {
           <Text style={styles.addText}>Add</Text>
         </Sticker>
       </View>
+        </>
+      )}
     </View>
   );
 
@@ -172,15 +233,17 @@ export default function LockerHome() {
     <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <FlatList
-        data={units}
+        data={searching ? [] : units}
         keyExtractor={(u) => String(u.id)}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={header}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            Your locker is empty. Add your first unit above.
-          </Text>
+          searching ? null : (
+            <Text style={styles.empty}>
+              Your locker is empty. Add your first unit above.
+            </Text>
+          )
         }
         ListFooterComponent={
           units.length > 0 ? (
@@ -269,6 +332,21 @@ const styles = StyleSheet.create({
   addFace: { paddingHorizontal: 18, paddingVertical: 10, justifyContent: 'center' },
   addText: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink },
   unit: { marginBottom: 12 },
+  search: {
+    backgroundColor: colors.white,
+    borderWidth: 2.5,
+    borderColor: colors.ink,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    color: colors.ink,
+    marginBottom: 18,
+  },
+  hitFace: { paddingVertical: 12, paddingHorizontal: 16 },
+  hitUnit: { fontFamily: fonts.semi, fontSize: 14, color: colors.ink },
+  hitTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink, marginTop: 2 },
   unitFace: { padding: 18 },
   unitCode: { fontFamily: fonts.bold, fontSize: 26, color: colors.ink },
   unitName: { fontFamily: fonts.medium, fontSize: 17, color: colors.ink },
