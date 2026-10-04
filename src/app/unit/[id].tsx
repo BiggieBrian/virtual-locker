@@ -22,7 +22,7 @@ import {
   renameDocument,
   uriForDocument,
 } from '../../lib/documents';
-import { openPdf } from '../../lib/openFile';
+import { openDocument } from '../../lib/openDocument';
 import { colors, fonts, stickerColor, tiltFor } from '../../theme';
 
 const TYPES: { key: DocType; label: string; emoji: string; color: string }[] = [
@@ -72,13 +72,10 @@ export default function UnitShelf() {
     }
   };
 
-  const handleOpen = async (doc: LockerDocument) => {
-    try {
-      await openPdf(uriForDocument(doc));
-    } catch (e) {
-      Alert.alert('Could not open file', String(e));
-    }
-  };
+  const handleOpen = (doc: LockerDocument) =>
+    openDocument(doc, () => {
+      refresh().catch(console.error);
+    });
 
   const openSheet = (doc: LockerDocument) => {
     setSelected(doc);

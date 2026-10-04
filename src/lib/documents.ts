@@ -127,3 +127,26 @@ export async function moveDocument(
     id
   );
 }
+
+export async function documentFileExists(doc: LockerDocument): Promise<boolean> {
+  const info = await FileSystem.getInfoAsync(uriForDocument(doc));
+  return info.exists;
+}
+
+// Lets the user pick the PDF again for a document whose file is missing.
+export async function reattachPdf(doc: LockerDocument): Promise<boolean> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: 'application/pdf',
+    copyToCacheDirectory: false,
+  });
+  if (result.canceled || result.assets.length === 0) return false;
+
+  const asset = result.assets[0];
+  const storedName = `${Date.now()}_${asset.name.replace(/[^\w.\-]+/g, '_')}`;
+  await ensureDocsDir();
+  await FileSystem.copyAsync({ from: asset.uri, to: `${DOCS_DIR}${storedName}` });
+
+  const db = await getDb();
+  await db.runAsync('UPDATE documents SET file_path = ? WHERE id = ?', storedName, doc.id);
+  return true;
+}

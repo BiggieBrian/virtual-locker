@@ -14,7 +14,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sticker from '../components/Sticker';
 import TodayStrip from '../components/TodayStrip';
-import { type IdCard, type Unit, addUnit, listUnits } from '../lib/db';
+import { type IdCard, type Unit, addUnit, listUnits, updateUnit } from '../lib/db';
 import {
   type DocumentHit,
   deleteUnitAndFiles,
@@ -28,6 +28,7 @@ import {
   listIdCards,
   uriForIdCard,
 } from '../lib/idcards';
+import { openDocument } from '../lib/openDocument';
 import { openPdf } from '../lib/openFile';
 import { colors, fonts, stickerColor, tiltFor } from '../theme';
 
@@ -39,6 +40,7 @@ export default function LockerHome() {
   const [viewing, setViewing] = useState<IdCard | null>(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<DocumentHit[]>([]);
   const searching = query.trim() !== '';
@@ -70,10 +72,29 @@ export default function LockerHome() {
       Alert.alert('Missing info', 'Enter both a unit code and a name.');
       return;
     }
-    await addUnit(c, n);
+    if (editingUnit) {
+      await updateUnit(editingUnit.id, { code: c, name: n });
+      setEditingUnit(null);
+    } else {
+      await addUnit(c, n);
+    }
     setCode('');
     setName('');
     await refresh();
+  };
+
+  const startEdit = (unit: Unit) => {
+    setEditingUnit(unit);
+    setCode(unit.code);
+    setName(unit.name);
+  };
+
+  const unitOptions = (unit: Unit) => {
+    Alert.alert(unit.code, unit.name, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Edit', onPress: () => startEdit(unit) },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(unit) },
+    ]);
   };
 
   const confirmDelete = (unit: Unit) => {
@@ -129,17 +150,16 @@ export default function LockerHome() {
     ]);
   };
 
-  const openHit = async (doc: DocumentHit) => {
-    try {
-      await openPdf(uriForDocument(doc));
-    } catch (e) {
-      Alert.alert('Could not open file', String(e));
-    }
-  };
+  const openHit = (doc: DocumentHit) => openDocument(doc);
 
   const header = (
     <View>
-      <Text style={styles.title}>My Locker</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>My Locker</Text>
+        <Pressable onPress={() => router.push('/backup')}>
+          <Text style={styles.backupLink}>Backup</Text>
+        </Pressable>
+      </View>
 
       <TextInput
         style={styles.search}
@@ -220,8 +240,20 @@ export default function LockerHome() {
           value={name}
           onChangeText={setName}
         />
+        {editingUnit && (
+          <Pressable
+            style={styles.cancelEdit}
+            onPress={() => {
+              setEditingUnit(null);
+              setCode('');
+              setName('');
+            }}
+          >
+            <Text style={styles.cancelEditText}>✕</Text>
+          </Pressable>
+        )}
         <Sticker color={colors.tomato} onPress={handleAdd} faceStyle={styles.addFace}>
-          <Text style={styles.addText}>Add</Text>
+          <Text style={styles.addText}>{editingUnit ? 'Save' : 'Add'}</Text>
         </Sticker>
       </View>
         </>
@@ -259,7 +291,7 @@ export default function LockerHome() {
             style={styles.unit}
             faceStyle={styles.unitFace}
             onPress={() => router.push(`/unit/${item.id}`)}
-            onLongPress={() => confirmDelete(item)}
+            onLongPress={() => unitOptions(item)}
           >
             <Text style={styles.unitCode}>{item.code}</Text>
             <Text style={styles.unitName}>{item.name}</Text>
@@ -332,6 +364,19 @@ const styles = StyleSheet.create({
   addFace: { paddingHorizontal: 18, paddingVertical: 10, justifyContent: 'center' },
   addText: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink },
   unit: { marginBottom: 12 },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  backupLink: {
+    fontFamily: fonts.semi,
+    fontSize: 15,
+    color: colors.ink,
+    textDecorationLine: 'underline',
+  },
+  cancelEdit: { alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 10 },
+  cancelEditText: { fontFamily: fonts.bold, fontSize: 18, color: colors.ink },
   search: {
     backgroundColor: colors.white,
     borderWidth: 2.5,
